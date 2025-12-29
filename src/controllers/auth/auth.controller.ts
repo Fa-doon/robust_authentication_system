@@ -52,12 +52,16 @@ export async function registerHandler(req: Request, res: Response) {
       { expiresIn: '1d' }
     );
 
-    const verifyURL = `${getAppUrl}/auth/verify-email?token=${verifyToken}`;
+    const verifyURL = `${getAppUrl()}/auth/verify-email?token=${verifyToken}`;
 
     await sendEmail(
       createdUser.email,
       'Verify your email',
-      `<p>Please verify your email by clicking this link:</p><p><a href="${verifyURL}"></p>`
+      `<p>Please verify your email by clicking this link:</p>
+      
+      <p><a href="${verifyURL}">${verifyURL}</a></p>
+
+      `
     );
 
     return res.status(201).json({
@@ -104,7 +108,7 @@ export async function verifyEmailHandler(req: Request, res: Response) {
     user.isEmailVerified = true;
     await user.save();
 
-    return res.json({ message: 'Email is not verified! You can login' });
+    return res.json({ message: 'Email verification successful! You can login' });
   } catch (error) {
     console.log('Internal server error', error);
     return res.status(500).json({

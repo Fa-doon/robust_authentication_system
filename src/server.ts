@@ -9,7 +9,7 @@ dotenv.config();
 
 
 async function startServer() {
-    await connectToDB;
+    await connectToDB();
 
     const server = http.createServer(app);
 
