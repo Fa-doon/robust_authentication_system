@@ -4,7 +4,7 @@ import { User } from '../../models/user.model';
 import { checkPassword, hashPassword } from '../../lib/hash';
 import jwt from 'jsonwebtoken';
 import { sendEmail } from '../../lib/email';
-import { createAccessToken, createRefreshToken } from '../../lib/token';
+import { createAccessToken, createRefreshToken, verifyRefreshToken } from '../../lib/token';
 
 function getAppUrl() {
   return process.env.APP_URL || `http://localhost:${process.env.PORT}`;
@@ -182,5 +182,70 @@ export async function loginHandler(req: Request, res: Response) {
     return res.status(500).json({
       message: 'Internal server error',
     });
+  }
+}
+
+export async function refreshTokenHandle(req: Request, res: Response) {
+  try {
+    const token = req.cookies?.refreshToken as string | undefined;
+    if (!token) {
+      return res.status(401).json({
+        message: 'Refresh token missing'
+      })
+    }
+
+    const payload = verifyRefreshToken(token);
+    const user = await User.findById(payload.sub);
+
+    if (!user) {
+      return res.status(401).json({
+        message: 'User not found'
+      })
+    }
+
+    if (user.tokenVersion !== payload.tokenVersion) {
+      return res.status(401).json({
+        message: 'Invalid refresh token'
+      })
+    }
+
+    const newAccessToken = createAccessToken(
+      user.id,
+      user.role,
+      user.tokenVersion
+    )
+
+    const newRefreshToken = createRefreshToken(
+      user.id,
+      user.tokenVersion
+    )
+
+    const isProd = process.env.NODE_ENV === 'production';
+
+    res.cookie('refreshToken', newRefreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 1000,
+    });
+
+     return res.status(200).json({
+      message: 'Token refreshed',
+      accessToken: newAccessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+        twoFactorEnabled: user.twoFactorEnabled,
+      },
+    });
+
+
+
+
+  
+  } catch (error) {
+    
   }
 }
