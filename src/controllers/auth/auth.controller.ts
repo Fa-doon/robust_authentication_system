@@ -240,12 +240,11 @@ export async function refreshTokenHandle(req: Request, res: Response) {
         twoFactorEnabled: user.twoFactorEnabled,
       },
     });
-
-
-
-
   
   } catch (error) {
-    
+    console.log('Internal server error', error);
+    return res.status(500).json({
+      message: 'Internal server error',
+    });
   }
 }
