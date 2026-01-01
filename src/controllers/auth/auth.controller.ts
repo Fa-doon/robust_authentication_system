@@ -4,7 +4,12 @@ import { User } from '../../models/user.model';
 import { checkPassword, hashPassword } from '../../lib/hash';
 import jwt from 'jsonwebtoken';
 import { sendEmail } from '../../lib/email';
-import { createAccessToken, createRefreshToken, verifyRefreshToken } from '../../lib/token';
+import {
+  createAccessToken,
+  createRefreshToken,
+  verifyRefreshToken,
+} from '../../lib/token';
+import crypto from 'crypto';
 
 function getAppUrl() {
   return process.env.APP_URL || `http://localhost:${process.env.PORT}`;
@@ -108,7 +113,9 @@ export async function verifyEmailHandler(req: Request, res: Response) {
     user.isEmailVerified = true;
     await user.save();
 
-    return res.json({ message: 'Email verification successful! You can login' });
+    return res.json({
+      message: 'Email verification successful! You can login',
+    });
   } catch (error) {
     console.log('Internal server error', error);
     return res.status(500).json({
@@ -185,13 +192,14 @@ export async function loginHandler(req: Request, res: Response) {
   }
 }
 
-export async function refreshTokenHandle(req: Request, res: Response) {
+export async function refreshTokenHandler(req: Request, res: Response) {
   try {
     const token = req.cookies?.refreshToken as string | undefined;
+
     if (!token) {
       return res.status(401).json({
-        message: 'Refresh token missing'
-      })
+        message: 'Refresh token missing',
+      });
     }
 
     const payload = verifyRefreshToken(token);
@@ -199,26 +207,23 @@ export async function refreshTokenHandle(req: Request, res: Response) {
 
     if (!user) {
       return res.status(401).json({
-        message: 'User not found'
-      })
+        message: 'User not found',
+      });
     }
 
     if (user.tokenVersion !== payload.tokenVersion) {
       return res.status(401).json({
-        message: 'Invalid refresh token'
-      })
+        message: 'Invalid refresh token',
+      });
     }
 
     const newAccessToken = createAccessToken(
       user.id,
       user.role,
       user.tokenVersion
-    )
+    );
 
-    const newRefreshToken = createRefreshToken(
-      user.id,
-      user.tokenVersion
-    )
+    const newRefreshToken = createRefreshToken(user.id, user.tokenVersion);
 
     const isProd = process.env.NODE_ENV === 'production';
 
@@ -229,7 +234,7 @@ export async function refreshTokenHandle(req: Request, res: Response) {
       maxAge: 7 * 24 * 60 * 1000,
     });
 
-     return res.status(200).json({
+    return res.status(200).json({
       message: 'Token refreshed',
       accessToken: newAccessToken,
       user: {
@@ -240,11 +245,123 @@ export async function refreshTokenHandle(req: Request, res: Response) {
         twoFactorEnabled: user.twoFactorEnabled,
       },
     });
-  
   } catch (error) {
     console.log('Internal server error', error);
     return res.status(500).json({
       message: 'Internal server error',
     });
   }
+}
+
+export async function logoutHandler(req: Request, res: Response) {
+  res.clearCookie('refreshToken', { path: '/' });
+  return res.status(200).json({
+    message: 'Logged out successfully',
+  });
+}
+
+export async function forgotPasswordHandler(req: Request, res: Response) {
+  const { email } = req.body as { email?: string };
+
+  // move to validation file
+  if (!email) {
+    return res.status(400).json({
+       message: 'Email is required'
+    })
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  try {
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (!user) {
+      return res.json({
+        message: 'If an account with this email exists, we will send you a reset link'
+      })
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    user.resetPasswordToken = tokenHash;
+    user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    await user.save();
+
+    const resetUrl = `${getAppUrl()}/auth/reset-password?token=${rawToken}`;
+
+    await sendEmail(
+      user.email,
+      'Reset your password',
+      `
+      <p>You requested password reset. Click on the below link to reset your password</p>
+
+      <p><a href=${resetUrl}>${resetUrl}</a></p>
+      `
+    )
+
+    return res.json({
+      message: 'If an account with this email exists, we will send you a reset link'
+    })
+  } catch (error) {
+    console.log('Internal server error', error);
+    return res.status(500).json({
+      message: 'Internal server error',
+    });
+  }
+}
+
+export async function resetPasswordHandler(req: Request, res: Response) {
+
+  const {token, password} = req.body as {token?: string, password?: string};
+
+  if (!token) {
+    return res.status(401).json({
+      message: 'Refresh token missing',
+    });
+  }
+
+  if (!password || password.length < 6) {
+    return res.status(400).json({
+      message: 'Password must be at least 6 characters long',
+    });
+  }
+
+  try {
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await User.findOne({
+      resetPasswordToken: tokenHash,
+      resetPasswordExpires: {$gt: new Date()} // expiry must be in the future
+    })
+
+    if (!user){
+      return res.status(400).json({
+        message: 'Invalid or expired token'
+      })
+    }
+
+    const newPassword = await hashPassword(password);
+
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    user.tokenVersion = user.tokenVersion + 1;
+
+    await user.save();
+
+    return res.json({
+      message: 'Password reset successful'
+    })
+
+  } catch (error) {
+    console.log('Internal server error', error);
+    return res.status(500).json({
+      message: 'Internal server error',
+    });
+  }
+
+
 }

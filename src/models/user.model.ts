@@ -50,7 +50,7 @@ const userSchema = new Schema({
         default: undefined
     },
 
-    resetPasswordExpired: {
+    resetPasswordExpires: {
         type: Date,
         default: undefined
     }
