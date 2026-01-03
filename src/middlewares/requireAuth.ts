@@ -11,7 +11,7 @@ export async function requireAuth(
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({
-      message: 'Unauthorized!',
+      message: 'Unauthorized. Token missing in headers',
     });
   }
 
@@ -40,7 +40,7 @@ export async function requireAuth(
       name: user.name,
       role: user.role,
       isEmailVerified: user.isEmailVerified,
-    }
+    };
 
     next();
   } catch (error) {
