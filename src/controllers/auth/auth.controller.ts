@@ -545,7 +545,7 @@ export async function twoFASetupHandler(req: Request, res: Response) {
     const otpAuthUrl = authenticator.keyuri(user.email, issuer, secret);
 
     user.twoFactorSecret = secret;
-    user.twoFactorEnabled = true;
+    user.twoFactorEnabled = false;
 
     await user.save();
 
@@ -554,6 +554,63 @@ export async function twoFASetupHandler(req: Request, res: Response) {
       otpAuthUrl,
       secret,
     });
+  } catch (error) {
+    console.log('Internal server error', error);
+    return res.status(500).json({
+      message: 'Internal server error',
+    });
+  }
+}
+
+export async function twoFAVerifyHandler(req: Request, res: Response) {
+  const authReq = req as any;
+
+  const authUser = authReq.user;
+
+  if (!authUser) {
+    return res.status(401).json({
+      message: 'Not authenticated',
+    });
+  }
+
+  const { code } = req.body as {code?: string};
+  if (!code) {
+    return res.status(400).json({
+      message: 'Code is required'
+    })
+  }
+  try {
+    const user = await User.findById(authUser.id);
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found',
+      });
+    }
+
+    if (!user.twoFactorSecret) {
+      return res.status(400).json({
+        message: 'You do not have 2FA set up',
+      })
+    }
+
+    const invalid = authenticator.check(code, user.twoFactorSecret);
+
+    if (!invalid) {
+      return res.status(404).json({
+        message: 'Invalid 2FA code',
+      })
+    }
+
+    user.twoFactorEnabled = true;
+    await user.save();
+
+    return res.json({
+      message: '2FA enabled successfully',
+      twoFactorEnabled: true
+    })
+
+
   } catch (error) {
     console.log('Internal server error', error);
     return res.status(500).json({
