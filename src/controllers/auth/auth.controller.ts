@@ -576,7 +576,7 @@ export async function twoFAVerifyHandler(req: Request, res: Response) {
   const { code } = req.body as {code?: string};
   if (!code) {
     return res.status(400).json({
-      message: 'Code is required'
+      message: '2FA code is required'
     })
   }
   try {
