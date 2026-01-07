@@ -189,6 +189,13 @@ export async function loginHandler(req: Request, res: Response) {
       }
 
       // verify the code using otplib
+      const isValidCode = authenticator.check(twoFactorCode, user.twoFactorSecret);
+
+      if (!isValidCode) {
+        return res.status(400).json({
+          message: 'Invalid 2FA code'
+        })
+      }
     }
 
     const accessToken = createAccessToken(
@@ -594,9 +601,9 @@ export async function twoFAVerifyHandler(req: Request, res: Response) {
       })
     }
 
-    const invalid = authenticator.check(code, user.twoFactorSecret);
+    const isValid = authenticator.check(code, user.twoFactorSecret);
 
-    if (!invalid) {
+    if (!isValid) {
       return res.status(404).json({
         message: 'Invalid 2FA code',
       })
